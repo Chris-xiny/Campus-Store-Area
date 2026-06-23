@@ -1,0 +1,48 @@
+server:
+  port: 8081
+spring:
+  application:
+    name: hmdp
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://192.168.100.128:3307/hmdp?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
+    username: root
+    password: '000000'
+  redis:
+    host: 192.168.100.128
+    port: 6379
+    password: '000000'
+    lettuce:
+      pool:
+        max-active: 50
+        max-idle: 50
+        min-idle: 1
+        time-between-eviction-runs: 10s
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+  rabbitmq:
+    host: 192.168.100.128       # RabbitMQ 服务器地址，本地装改为 127.0.0.1
+    port: 5672                  # AMQP 默认端口（15672 是管理后台 HTTP 端口）
+    username: guest             # 默认账号（生产环境必须改）
+    password: guest
+    virtual-host: /
+    publisher-confirm-type: correlated   # 开启生产者 Confirm 回调（消息是否到达 Exchange）
+    publisher-returns: true              # 开启 Return 回调（消息是否路由到 Queue）
+    listener:
+      simple:
+        acknowledge-mode: manual    # 手动 ACK，保证消息可靠消费
+        prefetch: 1                  # 每次只从队列取 1 条，处理完再取下一条，负载均衡更均匀
+        retry:
+          enabled: true              # 消费失败自动重试（兜底，实际优先靠手动 nack）
+          initial-interval: 1000     # 首次重试间隔 1 秒
+          max-attempts: 3            # 最多重试 3 次
+          multiplier: 2              # 重试间隔倍增：1s → 2s → 4s
+redisson:
+  address: redis://192.168.100.128:6379
+  password: '000000'
+  database: 0
+mybatis-plus:
+  type-aliases-package: com.hmdp.entity # 别名扫描包
+logging:
+  level:
+    com.hmdp: debug

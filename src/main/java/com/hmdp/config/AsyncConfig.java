@@ -25,17 +25,4 @@ public class AsyncConfig {
         executor.initialize();
         return executor;
     }
-    //Redis订单处理线程池
-    @Bean("voucherOrderExecutor")
-    public Executor orderExecutor(){
-        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(10);                // 核心线程数
-        executor.setMaxPoolSize(20);                 // 最大线程数
-        executor.setQueueCapacity(500);              // 队列容量
-        executor.setKeepAliveSeconds(10);            // 空闲线程存活时间（秒）
-        executor.setThreadNamePrefix("async-order-"); // 线程名前缀
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy()); // 拒绝策略
-        executor.initialize();
-        return executor;
-    }
 }

@@ -31,17 +31,10 @@ public class AsyncTaskUtils {
     @Async("cacheExecutor")
     public <R, Id> void rebuildCacheAsync(Id id, Class<R> type, Function<Id, R> dbFallBack, String lockKey) {
         try {
-            // 模拟重建耗时（实际是 DB 查询 + 业务处理）
-            sleep(200);
             R r = dbFallBack.apply(id);
             RedisData redisData = new RedisData(LocalDateTime.now().plusMinutes(CACHE_SHOP_TTL), r);
             stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
             log.debug("缓存重建完成, key={}", CACHE_SHOP_KEY + id);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.warn("缓存重建被中断, key={}", CACHE_SHOP_KEY + id);
-        } catch (Exception e) {
-            log.error("缓存重建异常, key={}", CACHE_SHOP_KEY + id, e);
         } finally {
             // 无论重建是否成功，保证锁一定会释放，否则其他线程永远拿不到锁
             stringRedisTemplate.delete(lockKey);

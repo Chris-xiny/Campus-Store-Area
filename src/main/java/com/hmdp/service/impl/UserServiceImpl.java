@@ -39,6 +39,21 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements IU
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
+
+    /**
+     * 根据用户 ID 查询公开信息（返回 UserDTO，隐藏手机号和密码）。
+     */
+    @Override
+    public Result queryUserById(Long id) {
+        User user = getById(id);
+        if (user == null) {
+            return Result.fail("用户不存在");
+        }
+        UserDTO userDTO = new UserDTO();
+        BeanUtil.copyProperties(user, userDTO);
+        return Result.ok(userDTO);
+    }
+
     /**
      * 发送手机验证码
      *

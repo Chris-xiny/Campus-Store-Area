@@ -39,7 +39,7 @@ public class VoucherOrderConsumer {
      * @param deliveryTag 消息的投递标签，ACK 时需要
      * @param redelivered 是否是重发消息（Broker 没收到上一次 ACK 时会重发）
      */
-    @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_QUEUE, concurrency = "1-3")
+    @RabbitListener(queues = RabbitMqConstants.SECKILL_ORDER_QUEUE, concurrency = "5-10")
     public void onMessage(VoucherOrder order,
                           Channel channel,
                           @Header(AmqpHeaders.DELIVERY_TAG) long deliveryTag,

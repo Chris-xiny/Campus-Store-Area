@@ -68,9 +68,15 @@ public class UserController {
 
     @GetMapping("/me")
     public Result me(){
-        // TODO 获取当前登录的用户并返回
-        UserDTO userDTO = UserHolder.getUser();
-        return Result.ok(userDTO);
+        return Result.ok(UserHolder.getUser());
+    }
+
+    /**
+     * 根据 ID 查询其他用户的公开信息（隐藏手机号、密码）。
+     */
+    @GetMapping("/{id}")
+    public Result queryUserById(@PathVariable("id") Long id) {
+        return userService.queryUserById(id);
     }
 
     @GetMapping("/info/{id}")

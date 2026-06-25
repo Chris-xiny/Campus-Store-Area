@@ -31,7 +31,9 @@ spring:
     listener:
       simple:
         acknowledge-mode: manual    # 手动 ACK，保证消息可靠消费
-        prefetch: 1                  # 每次只从队列取 1 条，处理完再取下一条，负载均衡更均匀
+        prefetch: 20                  # 每次只从队列取 20 条
+        concurrency: 5                # 并发消费 5 个线程
+        max-concurrency: 10           # 最大并发消费 10 个线程
         retry:
           enabled: true              # 消费失败自动重试（兜底，实际优先靠手动 nack）
           initial-interval: 1000     # 首次重试间隔 1 秒
@@ -46,3 +48,6 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+hmdp:
+  upload:
+    image-dir: E:/Code/Project/Campus-Store-Area/uploads/imgs/

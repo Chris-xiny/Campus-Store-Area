@@ -1,0 +1,94 @@
+services:
+  # ==================== MySQL ====================
+  mysql:
+    image: mysql:8
+    container_name: hmdp-mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "000000"
+      MYSQL_DATABASE: hmdp
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./sql:/docker-entrypoint-initdb.d:ro       # 首次启动自动执行目录下的 .sql 文件
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+    networks:
+      - hmdp-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p000000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== Redis ====================
+  redis:
+    image: redis:latest
+    container_name: hmdp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass 000000 --appendonly yes
+    volumes:
+      - myredis-data:/data
+    networks:
+      - hmdp-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "000000", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==================== RabbitMQ ====================
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: hmdp-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      RABBITMQ_ERLANG_COOKIE: SWQOKODSQALRPCLNMEQG
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - hmdp-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ==================== Nginx ====================
+  nginx:
+    image: nginx:1.30.2
+    container_name: hmdp-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./nginx/conf:/etc/nginx:ro                 # 完整 nginx 配置目录 (nginx.conf + mime.types 等)
+      - ./nginx/html:/usr/share/nginx/html:ro       # 前端静态资源 (含 hmdp/ 子目录)
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - hmdp-net
+
+# ==================== 数据卷 ====================
+volumes:
+  myredis-data:
+    external: true                # 绑定已有的 Redis 数据卷
+  mysql-data:                     # compose 自动创建并管理
+  rabbitmq-data:                  # compose 自动创建并管理
+
+networks:
+  hmdp-net:
+    driver: bridge

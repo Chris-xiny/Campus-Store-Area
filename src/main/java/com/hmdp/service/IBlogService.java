@@ -28,7 +28,7 @@ public interface IBlogService extends IService<Blog> {
     /**
      * 滚动分页查询当前用户关注人的博客。
      */
-    ScrollResult queryPageOfFollow(Long maxTime, Integer offset);
+    Result queryPageOfFollow(Long maxTime, Integer offset);
 
     /**
      * 点赞 / 取消点赞（切换状态）。

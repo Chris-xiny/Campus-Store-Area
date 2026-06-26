@@ -3,7 +3,6 @@ package com.hmdp.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.hmdp.dto.Result;
-import com.hmdp.dto.ScrollResult;
 import com.hmdp.dto.UserDTO;
 import com.hmdp.entity.Blog;
 import com.hmdp.service.IBlogService;
@@ -67,6 +66,17 @@ public class BlogController {
         // 获取当前页数据
         List<Blog> records = page.getRecords();
         return Result.ok(records);
+    }
+
+    /**
+     * 关注 Feed —— 滚动分页查询当前用户关注的人发布的博文。
+     * 前端传 lastId（上一页最后一条的 createTime 毫秒时间戳）和 offset。
+     */
+    @GetMapping("/of/follow")
+    public Result queryPageOfFollow(
+            @RequestParam("lastId") Long lastId,
+            @RequestParam(value = "offset", defaultValue = "0") Integer offset) {
+        return blogService.queryPageOfFollow(lastId, offset);
     }
 
     /**

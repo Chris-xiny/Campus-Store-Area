@@ -33,7 +33,7 @@ import java.util.stream.Collectors;
  * @since 2021-12-22
  */
 @Service
-public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
+public class  BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IBlogService {
 
     @Resource
     private IUserService userService;
@@ -91,12 +91,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
      * 每次取一页（PAGE_SIZE 条），返回 ScrollResult{list, offset, minTime}。
      */
     @Override
-    public ScrollResult queryPageOfFollow(Long maxTime, Integer offset) {
+    public Result queryPageOfFollow(Long maxTime, Integer offset) {
         Long userId = UserHolder.getUser().getId();
         // 1. 从 Redis SET 获取当前用户关注的所有用户 ID
         Set<String> followSet = stringRedisTemplate.opsForSet().members(RedisConstants.FOLLOWS_KEY + userId);
         if (CollUtil.isEmpty(followSet)) {
-            return new ScrollResult();
+            return Result.ok(new ScrollResult());
         }
         // 转为 Long 集合
         List<Long> followIds = followSet.stream().map(Long::valueOf).collect(Collectors.toList());
@@ -114,11 +114,12 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
 
         List<Blog> records = page.getRecords();
         if (CollUtil.isEmpty(records)) {
-            return new ScrollResult();
+            return Result.ok(new ScrollResult());
         }
 
-        // 4. 填充作者信息
+        // 4. 填充作者信息 + 是否已点赞
         fillUserInfo(records);
+        records.forEach(this::fillIsLike);
 
         // 5. 计算下一页参数
         int size = records.size();
@@ -144,7 +145,7 @@ public class BlogServiceImpl extends ServiceImpl<BlogMapper, Blog> implements IB
         result.setList(list);
         result.setOffset(nextOffset);
         result.setMinTime(minTime);
-        return result;
+        return Result.ok(result);
     }
 
     /**

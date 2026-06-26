@@ -136,6 +136,8 @@
       },
       sortAndQuery(sortBy) {
         this.params.sortBy = sortBy;
+        this.params.current = 1;
+        this.shops = [];
         this.queryShops();
       },
       goBack() {

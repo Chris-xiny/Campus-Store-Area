@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 
@@ -71,8 +72,8 @@ public class CacheClient {
                     stringRedisTemplate.opsForValue().set(key, "", CACHE_NULL_TTL, TimeUnit.MINUTES);
                     return null;
                 }
-                //数据库中存在，返回结果并写入redis
-                stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(r), ExpireSeconds, TimeUnit.MINUTES);
+                //数据库中存在，返回结果并写入redis（随机 TTL 防止缓存雪崩）
+                stringRedisTemplate.opsForValue().set(key, JSONUtil.toJsonStr(r), randomTtl(ExpireSeconds), TimeUnit.MINUTES);
                 //返回结果
                 return r;
             } catch (InterruptedException e) {
@@ -156,7 +157,8 @@ public class CacheClient {
 
     private <R,Id> R rebuildCacheWithExpireSeconds(String keyPrefix, Id id,Class<R> type, Function<Id,R> dbFallBack,Long logicExpireSeconds) {
         R r=dbFallBack.apply(id);
-        String json = JSONUtil.toJsonStr(new RedisData(LocalDateTime.now().plusSeconds(logicExpireSeconds), r));
+        // 随机化逻辑过期时间，防止缓存雪崩
+        String json = JSONUtil.toJsonStr(new RedisData(LocalDateTime.now().plusSeconds(randomTtl(logicExpireSeconds)), r));
         stringRedisTemplate.opsForValue().set(keyPrefix + id, json);
         if(r==null){//如果是空数据，设置ttl防止堆积无效数据占用空间
             stringRedisTemplate.expire(keyPrefix + id,CACHE_NULL_TTL,TimeUnit.MINUTES);
@@ -171,5 +173,13 @@ public class CacheClient {
 
     private void unLock(String key) {
         stringRedisTemplate.delete(key);
+    }
+
+    /**
+     * 在基准 TTL 上叠加 ±20% 随机偏移，避免大量 key 同时过期引发缓存雪崩。
+     */
+    private long randomTtl(long baseTtl) {
+        long offset = (long) (baseTtl * 0.2 * (ThreadLocalRandom.current().nextDouble() * 2 - 1));
+        return baseTtl + offset;
     }
 }

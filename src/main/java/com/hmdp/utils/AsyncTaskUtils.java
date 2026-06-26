@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
 
 import static com.hmdp.utils.RedisConstants.CACHE_SHOP_KEY;
@@ -32,7 +33,9 @@ public class AsyncTaskUtils {
     public <R, Id> void rebuildCacheAsync(Id id, Class<R> type, Function<Id, R> dbFallBack, String lockKey) {
         try {
             R r = dbFallBack.apply(id);
-            RedisData redisData = new RedisData(LocalDateTime.now().plusMinutes(CACHE_SHOP_TTL), r);
+            // 随机化逻辑过期时间（±20%），防止缓存雪崩
+            long randomMinutes = CACHE_SHOP_TTL + (long) (CACHE_SHOP_TTL * 0.2 * (ThreadLocalRandom.current().nextDouble() * 2 - 1));
+            RedisData redisData = new RedisData(LocalDateTime.now().plusMinutes(randomMinutes), r);
             stringRedisTemplate.opsForValue().set(CACHE_SHOP_KEY + id, JSONUtil.toJsonStr(redisData));
             log.debug("缓存重建完成, key={}", CACHE_SHOP_KEY + id);
         } finally {

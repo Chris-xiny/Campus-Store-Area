@@ -1,6 +1,8 @@
 package com.hmdp.mq;
 
 import com.hmdp.entity.VoucherOrder;
+import com.hmdp.service.ErrorLogService;
+import com.hmdp.service.IMqFailedOrderService;
 import com.hmdp.service.IVoucherOrderService;
 import com.rabbitmq.client.Channel;
 import lombok.RequiredArgsConstructor;
@@ -15,13 +17,13 @@ import org.springframework.stereotype.Component;
  *
  * <p>可靠性保障（面试重点）：
  * <ul>
- *   <li>手动 ACK：处理成功 basicAck；处理失败 basicNack + requeue 策略</li>
+ *   <li>手动 ACK：处理成功 basicAck；处理失败通过两层兜底保证消息出队</li>
  *   <li>幂等性：落库前先按订单 ID 查询，已存在则直接 ACK，避免重复落库</li>
- *   <li>异常兜底：捕获所有异常，避免消息进入死循环</li>
+ *   <li>降级链：补偿表（自动重试）→ ErrorLogService（DB + 本地文件自动降级），保证消息不循环</li>
  * </ul>
  *
  * <p>监听配置：queues 指定监听哪个队列；concurrency 指定消费者线程数范围（min-max）。
- * 这里 concurrency=1-3 表示最少 1 个消费线程、最多 3 个，根据消息堆积情况自动扩容。
+ * 这里 concurrency=5-10 表示最少 5 个消费线程、最多 10 个，根据消息堆积情况自动扩容。
  * 这比 Redis Stream 的 while(true) 单线程模型更弹性，也是真正利用了线程池。
  */
 @Slf4j
@@ -30,6 +32,8 @@ import org.springframework.stereotype.Component;
 public class VoucherOrderConsumer {
 
     private final IVoucherOrderService voucherOrderService;
+    private final IMqFailedOrderService mqFailedOrderService;
+    private final ErrorLogService errorLogService;
 
     /**
      * 消费秒杀订单消息。
@@ -54,16 +58,43 @@ public class VoucherOrderConsumer {
             // 处理成功：basicAck(deliveryTag, multiple=false)
             channel.basicAck(deliveryTag, false);
             log.debug("订单处理成功并已 ACK, orderId={}", order.getId());
+
         } catch (Exception e) {
             log.error("订单处理异常, orderId={}, cause={}", order.getId(), e.getMessage(), e);
-            try {
-                // 处理失败：basicNack(deliveryTag, multiple=false, requeue=false)
-                // requeue=false：不重新入队，避免同一条"毒消息"反复消费导致雪崩
-                // 生产环境建议把失败消息发到死信队列（DLX），由人工或补偿任务处理
-                channel.basicNack(deliveryTag, false, false);
-            } catch (Exception ackEx) {
-                log.error("发送 nack 失败, orderId={}", order.getId(), ackEx);
-            }
+            handleConsumerFailure(order, channel, deliveryTag, e);
+        }
+    }
+
+    /**
+     * 消费失败处理（两层降级 + 保证 ACK 出队）：
+     * <pre>
+     * 第一层：mq_failed_order 补偿表 → 定时任务自动重试，成功后删除
+     * 第二层：ErrorLogService → 写 error_log 表留痕（DB 失败自动降级到本地文件）
+     * 无论哪层成功，最终都 ACK 出队，防止消息在队列中无限循环。
+     * </pre>
+     */
+    private void handleConsumerFailure(VoucherOrder order, Channel channel,
+                                       long deliveryTag, Exception bizEx) {
+        String context = String.format(
+                "{\"orderId\":%d,\"userId\":%d,\"voucherId\":%d}",
+                order.getId(), order.getUserId(), order.getVoucherId());
+
+        // —— 第一层：补偿表（可自动重试） ——
+        try {
+            mqFailedOrderService.saveFailedOrder(order, bizEx.getMessage());
+            log.warn("补偿表写入成功, orderId={}", order.getId());
+        } catch (Exception compEx) {
+            // —— 第二层：ErrorLogService（DB → 本地文件自动降级） ——
+            log.error("补偿表写入失败，降级到 error_log, orderId={}", order.getId(), compEx);
+            errorLogService.log("秒杀订单",
+                    "VoucherOrderConsumer.onMessage", bizEx, context);
+        }
+
+        // 无论哪层，最终 ACK 出队，防止消息死循环
+        try {
+            channel.basicAck(deliveryTag, false);
+        } catch (Exception ackEx) {
+            log.error("ACK 发送失败, orderId={}", order.getId(), ackEx);
         }
     }
 }

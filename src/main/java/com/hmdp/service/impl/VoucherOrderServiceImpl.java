@@ -12,6 +12,7 @@ import com.hmdp.utils.UserHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -111,35 +112,43 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Transactional
     @Override
     public void handleVoucherOrder(VoucherOrder order) {
-        // 1. 幂等性校验：已落库的订单直接返回（应对 MQ 消息重发）
-        Long existCount = query().eq("id", order.getId()).count();
-        if (existCount > 0) {
-            log.info("订单已存在，跳过重复处理, orderId={}", order.getId());
-            return;
-        }
+        try {
+            // 1. 幂等性校验：已落库的订单直接返回（应对 MQ 消息重发）
+            Long existCount = query().eq("id", order.getId()).count();
+            if (existCount > 0) {
+                log.info("订单已存在，跳过重复处理, orderId={}", order.getId());
+                return;
+            }
 
-        // 2. DB 层再次校验一人一单（防御性编程，Lua 已经判过一次）
-        Long userId = order.getUserId();
-        Long count = query().eq("user_id", userId).eq("voucher_id", order.getVoucherId()).count();
-        if (count > 0) {
-            log.warn("一人一单校验失败（DB层）, userId={}, voucherId={}", userId, order.getVoucherId());
-            return;
-        }
+            // 2. DB 层再次校验一人一单（防御性编程，Lua 已经判过一次）
+            Long userId = order.getUserId();
+            Long count = query().eq("user_id", userId).eq("voucher_id", order.getVoucherId()).count();
+            if (count > 0) {
+                log.warn("一人一单校验失败（DB层）, userId={}, voucherId={}", userId, order.getVoucherId());
+                return;
+            }
 
-        // 3. DB 扣减库存（乐观锁：stock > 0）
-        boolean success = seckillVoucherService.update()
-                .setSql("stock = stock - 1")
-                .eq("voucher_id", order.getVoucherId())
-                .gt("stock", 0)
-                .update();
-        if (!success) {
-            log.error("DB 库存不足, voucherId={}", order.getVoucherId());
-            throw new RuntimeException("库存不足，订单处理失败");
-        }
+            // 3. DB 扣减库存（乐观锁：stock > 0）
+            boolean success = seckillVoucherService.update()
+                    .setSql("stock = stock - 1")
+                    .eq("voucher_id", order.getVoucherId())
+                    .gt("stock", 0)
+                    .update();
+            if (!success) {
+                log.error("DB 库存不足, voucherId={}", order.getVoucherId());
+                throw new RuntimeException("库存不足，订单处理失败");
+            }
 
-        // 4. 订单落库
-        save(order);
-        log.info("订单落库成功, orderId={}, userId={}, voucherId={}",
-                order.getId(), userId, order.getVoucherId());
+            // 4. 订单落库
+            save(order);
+            log.info("订单落库成功, orderId={}, userId={}, voucherId={}",
+                    order.getId(), userId, order.getVoucherId());
+
+        } catch (DuplicateKeyException e) {
+            // 并发兜底：两个消费者同时通过 SELECT 校验后，
+            // DB 唯一索引（主键 id + user_id/voucher_id 联合唯一）拦截重复 INSERT
+            log.warn("订单重复插入被唯一索引拦截, orderId={}, userId={}",
+                    order.getId(), order.getUserId());
+        }
     }
 }

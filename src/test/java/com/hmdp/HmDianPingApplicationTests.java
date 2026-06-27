@@ -32,61 +32,44 @@ class HmDianPingApplicationTests {
     private RLock lock;
 
     @BeforeEach
-    void set(){
+    void set() {
         RLock lock1 = redissonClient.getLock("order");
         RLock lock2 = redissonClient2.getLock("order");
         RLock lock3 = redissonClient3.getLock("order");
         lock = redissonClient.getMultiLock(lock1, lock2, lock3);
     }
+
     @Test
     void method01() throws InterruptedException {
-        boolean isLock=lock.tryLock(1,-1, TimeUnit.SECONDS);
-        if(!isLock){
+        boolean isLock = lock.tryLock(1, -1, TimeUnit.SECONDS);
+        if (!isLock) {
             log.error("获取锁失败...1");
             return;
         }
-        try{
+        try {
             log.info("获取锁成功...1");
             method02();
             log.info("执行业务...1");
-        }finally {
+        } finally {
             log.info("释放锁...1");
-            lock.unlock();
-        }
-    }
-    @Test
-    void method02() throws InterruptedException {
-        boolean isLock=lock.tryLock(1,-1, TimeUnit.SECONDS);
-        if(!isLock){
-            log.error("获取锁失败...2");
-            return;
-        }
-        try{
-            log.info("获取锁成功...2");
-            log.info("执行业务...2");
-        }finally {
-            log.info("释放锁...2");
             lock.unlock();
         }
     }
 
     @Test
-    void testIdWorker() throws InterruptedException {
-        String keyPrefix="order";
-        Long start =System.currentTimeMillis();
-        CountDownLatch latch = new CountDownLatch(300);
-        for (int i = 0; i < 300; i++) {
-            asyncTaskUtils.Task(key->{
-                for (int j = 0; j < 100; j++) {
-                    System.out.println(redisIdWorker.nextId(key));
-                }
-                latch.countDown();
-                return 0;
-            },keyPrefix);
+    void method02() throws InterruptedException {
+        boolean isLock = lock.tryLock(1, -1, TimeUnit.SECONDS);
+        if (!isLock) {
+            log.error("获取锁失败...2");
+            return;
         }
-        latch.await();
-        Long end =System.currentTimeMillis();
-        System.out.println(end-start);
+        try {
+            log.info("获取锁成功...2");
+            log.info("执行业务...2");
+        } finally {
+            log.info("释放锁...2");
+            lock.unlock();
+        }
     }
 
 }

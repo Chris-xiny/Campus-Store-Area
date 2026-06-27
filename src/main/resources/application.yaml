@@ -35,10 +35,7 @@ spring:
         concurrency: 5                # 并发消费 5 个线程
         max-concurrency: 10           # 最大并发消费 10 个线程
         retry:
-          enabled: true              # 消费失败自动重试（兜底，实际优先靠手动 nack）
-          initial-interval: 1000     # 首次重试间隔 1 秒
-          max-attempts: 3            # 最多重试 3 次
-          multiplier: 2              # 重试间隔倍增：1s → 2s → 4s
+          enabled: false             # 关闭 Spring 内置重试，补偿逻辑由定时任务接管（指数退避 + 死信升级）
 redisson:
   address: redis://192.168.100.128:6379
   password: '000000'
@@ -48,6 +45,12 @@ mybatis-plus:
 logging:
   level:
     com.hmdp: debug
+    top.javatool.canal.client: warn   # 关闭 canal 内部日志刷屏
 hmdp:
   upload:
     image-dir: E:/Code/Project/Campus-Store-Area/uploads/imgs/
+
+canal:
+  destination: example
+  server: 192.168.100.128:11111
+

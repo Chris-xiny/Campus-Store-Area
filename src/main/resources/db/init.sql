@@ -1274,11 +1274,49 @@ CREATE TABLE `tb_voucher_order`  (
   `use_time` timestamp NULL DEFAULT NULL COMMENT '核销时间',
   `refund_time` timestamp NULL DEFAULT NULL COMMENT '退款时间',
   `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-  PRIMARY KEY (`id`) USING BTREE
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_user_voucher` (`user_id`, `voucher_id`) USING BTREE COMMENT '一人一单唯一约束'
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci ROW_FORMAT = Compact;
 
 -- ----------------------------
 -- Records of tb_voucher_order
 -- ----------------------------
+
+-- ----------------------------
+-- Table structure for mq_failed_order（MQ 消费失败补偿表）
+-- ----------------------------
+DROP TABLE IF EXISTS `mq_failed_order`;
+CREATE TABLE `mq_failed_order` (
+  `id`              bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `order_id`        bigint(20) NOT NULL COMMENT '订单ID',
+  `user_id`         bigint(20) NOT NULL COMMENT '用户ID',
+  `voucher_id`      bigint(20) NOT NULL COMMENT '优惠券ID',
+  `fail_reason`     varchar(500) DEFAULT NULL COMMENT '失败原因',
+  `retry_count`     int(11) NOT NULL DEFAULT 0 COMMENT '已重试次数',
+  `max_retry`       int(11) NOT NULL DEFAULT 5 COMMENT '最大重试次数',
+  `next_retry_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '下次重试时间',
+  `status`          varchar(10) NOT NULL DEFAULT 'pending' COMMENT '状态：pending-待重试 / dead-死信',
+  `create_time`     timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time`     timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `uk_order_id` (`order_id`) COMMENT '同一订单不重复补偿'
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = 'MQ消费失败补偿表';
+
+-- ----------------------------
+-- Table structure for error_log（通用业务异常日志表）
+-- ----------------------------
+DROP TABLE IF EXISTS `error_log`;
+CREATE TABLE `error_log` (
+  `id`              bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `create_time`     timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '异常发生时间',
+  `biz_module`      varchar(50) NOT NULL COMMENT '业务模块，如秒杀订单、商铺缓存',
+  `error_method`    varchar(200) NOT NULL COMMENT '出错的类名.方法名',
+  `error_message`   varchar(500) DEFAULT NULL COMMENT '错误摘要',
+  `context`         text DEFAULT NULL COMMENT '异常上下文（JSON格式，记录关键参数）',
+  `stack_trace`     text DEFAULT NULL COMMENT '异常堆栈（截取前2000字符）',
+  PRIMARY KEY (`id`),
+  INDEX `idx_biz_module` (`biz_module`) COMMENT '按业务模块查询',
+  INDEX `idx_create_time` (`create_time`) COMMENT '按时间范围查询'
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_general_ci COMMENT = '通用业务异常日志表';
 
 SET FOREIGN_KEY_CHECKS = 1;

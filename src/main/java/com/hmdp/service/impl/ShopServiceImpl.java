@@ -90,8 +90,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         //1.先更新数据库
         updateById(shop);
-        //2.再删除Redis缓存
-        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
+        //2.缓存失效由 Canal binlog 监听自动处理（ShopCanalHandler），无需手动删除
         //3.同步GEO数据（如果坐标变更）
         if (shop.getX() != null && shop.getY() != null && shop.getTypeId() != null) {
             geoAdd(shop);

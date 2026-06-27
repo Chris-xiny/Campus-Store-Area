@@ -52,7 +52,6 @@ public class VoucherOrderProducer {
         } catch (Exception e) {
             // 发送失败（网络异常、Broker 不可达等），需要补偿：回滚 Redis 库存 + 记录失败日志
             log.error("秒杀订单消息发送异常, orderId={}, cause={}", order.getId(), e.getMessage(), e);
-            // TODO 生产环境：写入 mq_failed_order 表，由补偿任务重试发送
             throw new RuntimeException("秒杀消息发送失败", e);
         }
     }

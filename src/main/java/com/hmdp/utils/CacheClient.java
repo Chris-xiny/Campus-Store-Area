@@ -3,6 +3,8 @@ package com.hmdp.utils;
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -24,6 +26,16 @@ public class CacheClient {
     private StringRedisTemplate stringRedisTemplate;
     @Resource
     private AsyncTaskUtils asyncTaskUtils;
+
+    /**
+     * L1 本地缓存（Caffeine）：W-TinyLFU 淘汰策略，命中率优于 LRU。
+     * 5 秒 TTL 扛住极短时间内的重复请求（如同一用户连续点击商铺详情），
+     * 超过 5 秒自动过期，避免读到过期数据。
+     */
+    private final Cache<String, Object> localCache = Caffeine.newBuilder()
+            .maximumSize(5000)
+            .expireAfterWrite(5, TimeUnit.SECONDS)
+            .build();
 
     //用互斥锁解决缓存穿透
     public <R,Id> R queryWithMutex(String keyPrefix, String lockPrefix,Id id,Class<R> type,Function<Id,R> dbFallBack,Long ExpireSeconds,Long lockTTLSeconds ){
@@ -86,18 +98,27 @@ public class CacheClient {
         }
     }
 
-    //用逻辑过期解决缓存穿透
+    //用逻辑过期解决缓存穿透（已集成 L1 Caffeine 多级缓存）
     public  <R,Id> R queryWithLogicExpire(String keyPrefix, String lockPrefix, Id id, Class<R> type, Function<Id,R> dbFallBack,Long logicExpireSeconds,Long lockTTLSeconds){
-        //1.从redis中查询
         String key = keyPrefix + id;
-        String redisDataJson = stringRedisTemplate.opsForValue().get(key);
         String lockKey = lockPrefix + id;
-        //2.存在，返回
+
+        // ===== L1：Caffeine 本地缓存（命中则零网络开销直接返回） =====
+        Object cached = localCache.getIfPresent(key);
+        if (cached != null) {
+            log.debug("L1 本地缓存命中: {}", key);
+            return type.cast(cached);
+        }
+
+        // ===== L2：Redis 缓存 =====
+        String redisDataJson = stringRedisTemplate.opsForValue().get(key);
+        //存在，返回
         if (StrUtil.isNotBlank(redisDataJson)) {//isNotBlank()判断的是不为空且不为空串""
             RedisData redisData = JSONUtil.toBean(redisDataJson, RedisData.class);
             R r = JSONUtil.toBean(JSONUtil.toJsonStr(redisData.getData()), type);
             if (redisData.getExpireTime().isAfter(LocalDateTime.now())) {
-                //如果逻辑过期时间未过期，直接返回信息
+                //如果逻辑过期时间未过期，回填 L1 并返回
+                localCache.put(key, r);
                 return r;
             } else {
                 //如果过期了，通过判断获取锁是否成功来决定是否需要异步重建缓存，无论怎样最后都返回旧数据
@@ -123,16 +144,18 @@ public class CacheClient {
                     if (r == null) {
                         continue;
                     }
-                    //直接返回
                     return r;
                 } else {
                     //成功获取锁,二次检查如果已经存在，说明已经有线程刚刷新了缓存,直接返回数据
                     R r = isRedisDataExistInRedis(key,type);
                     //没有就查询数据库并重建缓存,然后返回新数据
                     if (r == null) {
-                        return rebuildCacheWithExpireSeconds(keyPrefix,id,type,dbFallBack,logicExpireSeconds);
+                        R rebuilt = rebuildCacheWithExpireSeconds(keyPrefix,id,type,dbFallBack,logicExpireSeconds);
+                        if (rebuilt != null) localCache.put(key, rebuilt);
+                        return rebuilt;
                     }
-                    //直接返回
+                    //回填 L1 并返回
+                    localCache.put(key, r);
                     return r;
                 }
             } catch (InterruptedException e) {
@@ -173,6 +196,16 @@ public class CacheClient {
 
     private void unLock(String key) {
         stringRedisTemplate.delete(key);
+    }
+
+    /**
+     * 清除 L1 本地缓存（更新数据时调用，保证 L1 + L2 同时失效）。
+     * 多实例部署时可通过 Redis Pub/Sub 广播此操作到所有节点。
+     */
+    public void invalidateLocalCache(String keyPrefix, Long id) {
+        String key = keyPrefix + id;
+        localCache.invalidate(key);
+        log.debug("L1 本地缓存已清除: {}", key);
     }
 
     /**

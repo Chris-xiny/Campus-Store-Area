@@ -26,14 +26,6 @@ import java.util.stream.Collectors;
 
 import static com.hmdp.utils.RedisConstants.*;
 
-/**
- * <p>
- * 服务实现类
- * </p>
- *
- * @author 虎哥
- * @since 2021-12-22
- */
 @Slf4j
 @Service
 public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IShopService {
@@ -53,10 +45,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      */
     @Override
     public Result QueryById(Long id) {
-        //用互斥锁解决缓存穿透
-        //Shop shop=cacheClient.queryWithMutex(CACHE_SHOP_KEY,LOCK_SHOP_KEY,id,Shop.class,this::getById,CACHE_SHOP_TTL,LOCK_SHOP_TTL);
         //用逻辑过期解决缓存穿透
-        Shop shop = cacheClient.queryWithLogicExpire(CACHE_SHOP_KEY,LOCK_SHOP_KEY,id,Shop.class,this::getById,CACHE_SHOP_TTL,LOCK_SHOP_TTL);
+        Shop shop = cacheClient.queryWithLogicExpire(CACHE_SHOP_KEY, LOCK_SHOP_KEY, id, Shop.class, this::getById, CACHE_SHOP_TTL, LOCK_SHOP_TTL);
         if (shop == null) {
             return Result.fail("商户信息不存在");
         }
@@ -90,7 +80,9 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
         //1.先更新数据库
         updateById(shop);
-        //2.缓存失效由 Canal binlog 监听自动处理（ShopCanalHandler），无需手动删除
+        //2.删除 L1 本地缓存 + L2 Redis 缓存（Canal binlog 方案待官方兼容 MySQL 8.x 后启用）
+        cacheClient.invalidateLocalCache(CACHE_SHOP_KEY, id);
+        stringRedisTemplate.delete(CACHE_SHOP_KEY + id);
         //3.同步GEO数据（如果坐标变更）
         if (shop.getX() != null && shop.getY() != null && shop.getTypeId() != null) {
             geoAdd(shop);

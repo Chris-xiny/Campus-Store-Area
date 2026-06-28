@@ -39,13 +39,4 @@ public class SimpleRedisLock implements ILock{
                 ID_PREFIX+Thread.currentThread().getId()
                 );
     }
-
-    /*@Override
-    public void unlock() {
-        String threadId=ID_PREFIX+Thread.currentThread().getId();
-        String id = stringRedisTemplate.opsForValue().get(KEY_Prefix + name);
-        if(threadId.equals(id)){
-        stringRedisTemplate.delete(KEY_Prefix+name);
-        }
-    }*/
 }

@@ -1,7 +1,6 @@
 package com.hmdp.utils;
 
 import com.hmdp.dto.Result;
-import com.hmdp.utils.TokenGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 

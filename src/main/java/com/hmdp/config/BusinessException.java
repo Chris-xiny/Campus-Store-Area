@@ -1,6 +1,5 @@
 package com.hmdp.config;
 
-import com.hmdp.dto.Result;
 import lombok.Getter;
 
 /**
